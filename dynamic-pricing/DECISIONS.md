@@ -1,0 +1,99 @@
+# Decisions and Changes
+
+The running record of what was decided, why, and what changed. Add to it with every change.
+
+## Reviewing this work
+
+The original assignment is commit `19fb148` (`19fb14848a0683f3114b4684b089dc3b6ccd42d7`, "Add customer-data-pipeline data engineer assignment"). Everything after it is this solution:
+
+```bash
+git log --reverse 19fb148..HEAD
+git diff 19fb148..HEAD
+```
+
+**Status values:** Accepted (agreed and in force), Proposed (awaiting sign-off), Deviation (a deliberate departure from the conventions).
+
+## Pricing model behaviour
+
+Measured on 2026-10-30 against `tripladev/rate-api`, run through Docker Compose, with 971 batched calls on a fresh container. Where this differs from the published documentation, the code follows these results.
+
+| Behaviour | Result | Effect on the design |
+|---|---|---|
+| Batch of all 36 combinations | Works. Successful calls took 3ms at p50 and 43ms at most | Batching is viable, and short timeouts are safe |
+| `rate` type | Integer. The documentation shows a string | Accept both and return an integer |
+| Repeated calls | A different rate each time | Caching is directly observable in tests and by hand |
+| Random HTTP 500 | 87 of 970 calls (9%) | Failures are routine, so each one needs a clear error response |
+| Random hang | 73 of 970 calls (7.5%). One test call was still hanging at 120s | Strict timeouts are essential. The scaffold has none |
+| Consecutive failures | At most 3 in the run | Failures are short-lived, so the next request usually succeeds |
+| Quota exceeded | `429 {"error": "Rate limit exceeded (1000/day)"}` | Treat as unavailable and return 503 |
+| Quota accounting | The 429 arrived after 970 batch calls plus 30 bad-value calls, with 30 bad-token calls also sent. So 500s and hangs count against the quota, and bad tokens appear not to | Failed calls spend quota. See the known risks below |
+| Bad token | `401 {"error": "Unauthorized"}` | Log as a configuration error and return 502. Never pass it to the client |
+| Malformed JSON | `400` with an HTML body | Don't assume error bodies are JSON |
+| Quota reset time | Not measured | None for now, since the service keeps no call count |
+
+## Decision log
+
+| # | Date | Status | Decision | Why |
+|---|---|---|---|---|
+| 1 | 2026-10-30 | Accepted | Commit `docker-compose.example.yml` and gitignore `docker-compose.yml` | Keeps keys out of the repository. Environment variables stay in the compose file, with no `.env` files |
+| 2 | 2026-10-30 | Accepted | Move the assignment brief to `spec.md` and keep it unchanged | Frees `README.md` for this project and preserves the original requirements |
+| 3 | 2026-10-30 | Accepted | Remove the token default from `RateApiClient`, so a missing `RATE_API_TOKEN` fails at load | A default in source defeats decision 1 |
+| 4 | 2026-10-30 | Accepted | CI builds `docker-compose.yml` from the example using a `RATE_API_TOKEN` Actions secret | CI needs the file now that it's untracked, and its endpoint check needs a valid token |
+| 5 | 2026-10-30 | Accepted | Fetch all 36 combinations in one batched call and cache them as one snapshot for 5 minutes | Caps healthy traffic at 288 windows a day. Caching each combination separately could reach 10,000 calls against a limit of 1,000 |
+| 6 | 2026-10-30 | Accepted | Use Redis through `Rails.cache` | The quota is per token, so state must be shared across processes |
+| 7 | 2026-10-30 | Accepted | Never serve a rate older than 5 minutes, and start the clock before the upstream call is sent | Rate validity is a hard requirement, so an outage returns an error rather than an old price |
+| 8 | 2026-10-30 | Accepted | Use conventions-format errors: `{ "error": { "code", "message", "details" } }`, from a central registry | Requested by the author. Replaces the scaffold's `{ "error": "message" }` and its tests |
+| 9 | 2026-10-30 | Accepted | Use RSpec instead of Minitest, and add Alba, rack-attack and json_model_rb | Requested by the author, matching the conventions |
+| 10 | 2026-10-30 | Accepted | Use a json_model_rb request model for the pricing query parameters | Requested by the author. The conventions describe request models for bodies, so this extends the pattern to a GET |
+| 11 | 2026-10-30 | Accepted | No distributed lock. Cache only valid results through `Rails.cache.fetch` | Calls take milliseconds at 0.12 requests a second, so concurrent misses are rare. Concurrent fetches may overwrite each other, but each result is still fresh |
+| 12 | 2026-10-30 | Accepted | Make Redis errors raise through the cache store's `error_handler`, returning 503 | `Rails.cache` otherwise reports Redis errors as cache misses, and each miss would spend quota |
+| 13 | 2026-10-30 | Accepted | Set a 1s connect and 2s read timeout on upstream calls | Hangs lasted over 120s in testing, while successful calls took 43ms at most |
+| 14 | 2026-10-30 | Accepted | No retries, failure backoff or daily call counter | Chosen by the author for simplicity. The next request after a failure simply tries again |
+| 15 | 2026-10-30 | Accepted | Generate API docs with openapi-ruby from the RSpec request specs | Moving to RSpec (decision 9) makes this possible. It matches the conventions and keeps the docs in sync with the tests |
+| 16 | 2026-10-30 | Accepted | Update this document in every commit | Requested by the author, so each commit carries its own reasoning |
+
+### Known risks accepted
+
+- **Failed refreshes reach users.** About 1 call in 6 fails, so about 1 in 6 refreshes returns an error to the request that triggered it. That is roughly 57 errors a day at 10,000 requests, and the next request tries again.
+- **Normal quota use rises slightly.** Failed calls spend quota, so healthy use is about 345 calls a day rather than 288.
+- **A long outage can exhaust the quota.** Every request during an outage makes an upstream call, so 1,000 requests would use up the day's quota. Rates then stay unavailable after the outage ends, until the quota resets.
+
+## Convention review
+
+Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md` on 2026-10-30.
+
+### Changes the review makes to the design
+
+| Convention | Change |
+|---|---|
+| API clients live in `app/clients/` | Move `RateApiClient` out of `lib/` |
+| One error code registry, custom error classes, a single `rescue_from` | Add `app/errors/error_codes.rb` and `ApiError` |
+| YARD comments where behaviour isn't obvious | Add to the new service and client only |
+| Every project has a `rack-cors` initializer | Add it, with `origins '*'` until real origins are known |
+| Rubocop and CI lint | Add `.rubocop.yml`, and add Rubocop to CI |
+| Timezone defaults to UTC | Set it explicitly |
+
+### Deliberate deviations
+
+| Convention | Deviation | Why |
+|---|---|---|
+| Compose has `api`, `db` and `yard` services | Keep `interview-dev`, and add no `db` or `yard` | The brief's commands use that name, nothing uses a database, and YARD comments don't need a server |
+| PostgreSQL | No Postgres | The service has no tables |
+| Lefthook git hooks | Not added | Decided by the author. CI runs the tests and lint instead |
+| Commit attribution from the tooling | No co-author lines | `CLAUDE.md` says not to co-author commits, and that takes precedence |
+
+### Already aligned or not applicable
+
+- **Aligned:** Docker-only development, no `.env` files, feature branch workflow, external services stubbed in tests, and service objects for orchestration.
+- **Not applicable:** Pagy and Ransack (no list endpoints), uids (no exposed records), migrations and background jobs (none needed).
+
+## Change log
+
+### 2026-10-30: Repository setup
+
+- Renamed `README.md` to `spec.md`, unchanged.
+- Added a new `README.md` and this file.
+- Added `docker-compose.example.yml` with a token placeholder.
+- Gitignored and untracked `docker-compose.yml`. The local copy holds the real token.
+- Removed the hardcoded token default from `lib/rate_api_client.rb`.
+- Updated `.github/workflows/ci.yml` to create the compose file from the example.

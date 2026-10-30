@@ -31,3 +31,6 @@
 
 # Ignore master key for decrypting credentials and more.
 /config/master.key
+
+# Local compose file holds secrets; copy it from docker-compose.example.yml.
+/docker-compose.yml

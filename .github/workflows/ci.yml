@@ -14,6 +14,10 @@ jobs:
         working-directory: ./dynamic-pricing
     steps:
     - uses: actions/checkout@v4
+    - name: Create compose file
+      env:
+        RATE_API_TOKEN: ${{ secrets.RATE_API_TOKEN }}
+      run: sed "s/REPLACE_WITH_RATE_API_TOKEN/$RATE_API_TOKEN/" docker-compose.example.yml > docker-compose.yml
     - name: Start services
       run: docker compose up -d --build
     - name: Run all tests
