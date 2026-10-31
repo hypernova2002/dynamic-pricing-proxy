@@ -1,6 +1,6 @@
 # Decisions and Changes
 
-The running record of what was decided, why, and what changed. Add to it with every change.
+An audit log of what was decided, why, and what changed, updated with every commit. For an overview of the design, see the [README](README.md).
 
 ## Reviewing this work
 
@@ -11,7 +11,7 @@ git log --reverse 19fb148..HEAD
 git diff 19fb148..HEAD
 ```
 
-**Status values:** Accepted (agreed and in force), Proposed (awaiting sign-off), Deviation (a deliberate departure from the conventions).
+**Status values:** Accepted (in force), Superseded (replaced by a later decision).
 
 ## Pricing model behaviour
 
@@ -45,22 +45,23 @@ Measured on 2026-10-30 against `tripladev/rate-api`, run through Docker Compose,
 | 5 | 2026-10-30 | Accepted | Fetch all 36 combinations in one batched call and cache them as one snapshot for 5 minutes | Caps healthy traffic at 288 windows a day. Caching each combination separately could reach 10,000 calls against a limit of 1,000 |
 | 6 | 2026-10-30 | Accepted | Use Redis through `Rails.cache` | The quota is per token, so state must be shared across processes |
 | 7 | 2026-10-30 | Accepted | Never serve a rate older than 5 minutes, and start the clock before the upstream call is sent | Rate validity is a hard requirement, so an outage returns an error rather than an old price |
-| 8 | 2026-10-30 | Accepted | Use conventions-format errors: `{ "error": { "code", "message", "details" } }`, from a central registry | Requested by the author. Replaces the scaffold's `{ "error": "message" }` and its tests |
-| 9 | 2026-10-30 | Accepted | Use RSpec instead of Minitest, and add Alba, rack-attack and json_model_rb | Requested by the author, matching the conventions |
-| 10 | 2026-10-30 | Accepted | Use a json_model_rb request model for the pricing query parameters | Requested by the author. The conventions describe request models for bodies, so this extends the pattern to a GET |
-| 11 | 2026-10-30 | Accepted | No distributed lock. Cache only valid results through `Rails.cache.fetch` | Calls take milliseconds at 0.12 requests a second, so concurrent misses are rare. Concurrent fetches may overwrite each other, but each result is still fresh |
+| 8 | 2026-10-30 | Accepted | Return errors as `{ "error": { "code", "message", "details" } }`, from a central registry | Gives clients stable codes and field-level detail, and every failure the same shape. Replaces the scaffold's `{ "error": "message" }` and its tests |
+| 9 | 2026-10-30 | Accepted | Use RSpec instead of Minitest, and add Alba, rack-attack and json_model_rb | The author's preferred stack for Rails APIs. The brief allows changing dependencies, and each one's use here is described in the change log |
+| 10 | 2026-10-30 | Accepted | Use a json_model_rb request model for the pricing query parameters | Declares the valid values in one place. Request models usually describe bodies, so this extends the pattern to a GET |
+| 11 | 2026-10-30 | Superseded by 20 | No distributed lock. Cache only valid results through `Rails.cache.fetch` | Calls take milliseconds at 0.12 requests a second, so concurrent misses are rare. Concurrent fetches may overwrite each other, but each result is still fresh |
 | 12 | 2026-10-30 | Accepted | Make Redis errors raise through the cache store's `error_handler`, returning 503 | `Rails.cache` otherwise reports Redis errors as cache misses, and each miss would spend quota |
 | 13 | 2026-10-30 | Accepted | Set a 1s connect and 2s read timeout on upstream calls | Hangs lasted over 120s in testing, while successful calls took 43ms at most |
-| 14 | 2026-10-30 | Accepted | No retries, failure backoff or daily call counter | Chosen by the author for simplicity. The next request after a failure simply tries again |
-| 15 | 2026-10-30 | Accepted | Generate API docs with openapi-ruby from the RSpec request specs | Moving to RSpec (decision 9) makes this possible. It matches the conventions and keeps the docs in sync with the tests |
-| 16 | 2026-10-30 | Accepted | Update this document in every commit | Requested by the author, so each commit carries its own reasoning |
-| 17 | 2026-10-31 | Accepted | A missing or invalid row keeps its earlier rate until that rate's own 5 minutes end, then returns `502` for that combination only. Valid rows are still used | Requested by the author. One bad row shouldn't block the other 35 prices or discard a rate that is still valid. Each row therefore needs its own timestamp, so a row kept from an earlier fetch can't exceed the limit |
+| 14 | 2026-10-30 | Superseded by 20 and 22 | No retries, failure backoff or daily call counter | Chosen by the author for simplicity. The next request after a failure simply tries again |
+| 15 | 2026-10-30 | Accepted | Generate API docs with openapi-ruby from the RSpec request specs | Moving to RSpec (decision 9) makes this possible. It keeps the docs in sync with the tests |
+| 16 | 2026-10-30 | Accepted | Update this document in every commit | So each commit carries its own reasoning |
+| 17 | 2026-10-31 | Accepted | A missing or invalid row keeps its earlier rate until that rate's own 5 minutes end, then returns `502` for that combination only. Valid rows are still used | One bad row shouldn't block the other 35 prices or discard a rate that is still valid. Each row therefore needs its own timestamp, so a row kept from an earlier fetch can't exceed the limit |
 | 18 | 2026-10-31 | Accepted | Duplicate rows overwrite, so the last one wins, and are logged | Rows have no identifiers to tell them apart, and rates vary per call, so duplicates may disagree |
 | 19 | 2026-10-31 | Accepted | Rows that weren't requested are ignored and logged | With no identifiers they can't be matched to anything, so they shouldn't be cached |
-| 20 | 2026-10-31 | Accepted | Never let traffic decide how often the API is called: a worker refreshes the cache, requests only read it, and one Redis key allows at most one call every 90s | The author requires that the quota is never hit, whatever the traffic. This caps calls at 960 a day. Replaces decisions 11 and 14 |
+| 20 | 2026-10-31 | Accepted | Never let traffic decide how often the API is called: a worker refreshes the cache, requests only read it, and one Redis key allows at most one call every 90s | The quota must never be hit, whatever the traffic. This caps calls at 960 a day. It also means a request never waits on the pricing model (decision 24). Replaces decisions 11 and 14 |
 | 21 | 2026-10-31 | Accepted | Run the worker as a loop in `bin/rate_refresher`, refreshing once rates reach 180s of age | What to do depends on the age of the rates and the last attempt, not the time of day. Cron can only run once a minute, and rake adds nothing to a process that never exits |
 | 22 | 2026-10-31 | Accepted | No quick retry. The next attempt comes 90s later | A quick retry would need a 180s gate to keep the 960 limit. It gives no benefit while rates are still valid, and spaced attempts cope better with a problem that lasts more than a moment |
 | 23 | 2026-10-31 | Accepted | Log failed refresh attempts at `info` | There are no quick retries to keep quiet, so each failure is worth seeing at the production default level |
+| 24 | 2026-10-31 | Accepted | Requests fail fast on a cache miss instead of waiting for the pricing model | Response time matters to users. A request that fetched its own rates could wait up to 3s on a hung call, and 7.5% of calls hung in testing. Reading the cache took about 11ms at p50, for both hits and misses |
 
 ### Known risks accepted
 
@@ -71,61 +72,52 @@ These estimates use the failure rate from one test run of 970 calls.
 - **Worker down means no rates.** Requests return `503` within 5 minutes of the worker stopping, and nothing alerts on this. A Compose healthcheck wouldn't help, because Compose doesn't act on it. Production should alert on `503` rates or on `rate_refresh_succeeded` logs stopping.
 - **The 960 limit assumes** that nothing else uses the token and that Redis keeps the gate. A Redis wipe could allow one extra call.
 
-Decisions 11 and 14 are superseded by decisions 20 and 22.
+## Response times
+
+Moving fetching to the worker keeps the pricing model out of the request path, so its speed and failures don't reach users as delays.
+
+| Request | p50 | p95 | Max |
+|---|---|---|---|
+| Cache hit (`200`) | 11.5ms | 14.6ms | 40.7ms |
+| Cache miss (`503`) | 10.9ms | 15.5ms | 57.9ms |
+
+Measured over 100 sequential requests each, on a local Compose stack in development mode, so these show the scale rather than a production figure.
+
+If requests fetched on a miss, the request triggering a refresh would wait for the model. About 7.5% of calls hung in testing, and each would hold that request for up to 3s (the 1s connect and 2s read timeouts). Other requests would either queue behind it or make calls of their own.
 
 ## Scaling limits
 
-The brief only asks for rates across a fixed set of 36 combinations, at 10,000 requests a day. It doesn't mention an arbitrary or growing number of hotels, so one batch is enough for this assignment.
+The brief only asks for rates across a fixed set of 36 combinations, at 10,000 requests a day. It doesn't mention an arbitrary or growing number of hotels, so one batch is enough for now.
 
-One batch per 5-minute window won't hold if the catalogue grows:
+The worker already handles any amount of request traffic, since requests never call the model. What limits growth is the catalogue. The API documents no batch size limit, and only 36 items have been tested. If the catalogue outgrew one request, batches would need splitting, and each batch is another call:
 
-| Batches per window | Calls/day if every call succeeds | Calls/day at the measured 1-in-6 failure rate, retried until success | Within 1,000? |
+| Batches per window | Calls/day if refreshed only at expiry, every call succeeding | Same, at the measured 1-in-6 failure rate | Within 1,000? |
 |---|---|---|---|
 | 1 | 288 | about 345 | Yes |
 | 2 | 576 | about 690 | Yes |
-| 3 | 864 | about 1,035 | No, once failures are counted |
+| 3 | 864 | about 1,035 | No |
 
-Splitting batches therefore only helps up to a point. The quota allows about 2 batches per window, so capacity is about 2 × the largest batch the API accepts. That batch limit is unknown. Beyond it, the options are a higher quota, more tokens, or fetching only the combinations in demand.
+Those are minimums. Refreshing early, as the worker does to hide failures, costs more, so splitting buys about one doubling at best. Beyond that, the options are a higher quota, more tokens, or fetching only the combinations in demand. Splitting also needs one cache entry and one gate per batch, so that a failed batch doesn't affect the others.
 
-**Expected long-term design:** a worker process refreshes the cache, and requests only read from it.
+## Deliberately left out
 
-- Users no longer see failed refreshes, because retries happen in the worker while the current rates are still valid.
-- Refreshing early costs quota. Refreshing every 4 minutes takes 360 windows a day rather than 288, which lowers the numbers above.
-- Only one scheduler may run, because the token's quota is shared.
-- Splitting needs one cache entry per batch, so that one failed batch doesn't invalidate the others.
-
-**Decision for now:** keep one batch, as the brief's fixed scope doesn't need more. Whether to move to a worker now is under review (decision 20).
-
-## Convention review
-
-Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md` on 2026-10-30.
-
-### Changes the review makes to the design
-
-| Convention | Change |
+| Option | Why not |
 |---|---|
-| API clients live in `app/clients/` | Move `RateApiClient` out of `lib/` |
-| One error code registry, custom error classes, a single `rescue_from` | Add `app/errors/error_codes.rb` and `ApiError` |
-| YARD comments where behaviour isn't obvious | Add to the new service and client only |
-| Every project has a `rack-cors` initializer | Add it, with `origins '*'` until real origins are known |
-| Rubocop and CI lint | Add `.rubocop.yml`, and add Rubocop to CI |
-| Timezone defaults to UTC | Set it explicitly |
-
-### Deliberate deviations
-
-| Convention | Deviation | Why |
-|---|---|---|
-| Compose has `api`, `db` and `yard` services | Keep `interview-dev`, and add no `db` or `yard` | The brief's commands use that name, nothing uses a database, and YARD comments don't need a server |
-| PostgreSQL | No Postgres | The service has no tables |
-| Lefthook git hooks | Not added | Decided by the author. CI runs the tests and lint instead |
-| Commit attribution from the tooling | No co-author lines | `CLAUDE.md` says not to co-author commits, and that takes precedence |
-
-### Already aligned or not applicable
-
-- **Aligned:** Docker-only development, no `.env` files, feature branch workflow, external services stubbed in tests, and service objects for orchestration.
-- **Not applicable:** Pagy and Ransack (no list endpoints), uids (no exposed records), migrations and background jobs (none needed).
+| A database | The service has no tables, and rates only live for 5 minutes |
+| Sidekiq or another scheduler | One periodic job doesn't need them. See decision 21 |
+| A daily call counter | The gate already caps calls at 960 a day, without needing to know when the quota resets |
+| Serving old rates during an outage | Rates must be no older than 5 minutes (decision 7) |
+| Swagger UI | The YAML file is enough for one endpoint |
+| factory_bot | There are no models to build |
+| Git hooks | CI runs the tests and lint |
 
 ## Change log
+
+### 2026-10-31: Finish the documentation
+
+- Rewrote the README with the design, a summary of the key decisions, its trade-offs, the API and how to run everything. This log is now the audit record behind it.
+- Recorded response times and the decision to fail fast on a cache miss (decision 24).
+- Updated the scaling section for the worker design, and marked decisions 11 and 14 as superseded.
 
 ### 2026-10-31: Generate API docs with openapi-ruby
 
@@ -138,9 +130,9 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ### 2026-10-31: Add CORS and explicit UTC
 
-- Added `rack-cors` with `origins "*"`, the conventions' default until real origins are known. This should be narrowed before production if browsers will call the API directly.
-- Allowed only `GET`, `HEAD` and `OPTIONS`, narrower than the conventions' list, because the API has no write endpoints.
-- Exposed `Retry-After` so browsers can read it on a `429`, in place of the conventions' pagination headers, as there are no list endpoints.
+- Added `rack-cors` with `origins "*"` until real origins are known. This should be narrowed before production if browsers will call the API directly.
+- Allowed only `GET`, `HEAD` and `OPTIONS`, because the API has no write endpoints.
+- Exposed `Retry-After` so browsers can read it on a `429`.
 - Set the time zone and Active Record's default to UTC explicitly. Both were already the Rails default, so behaviour doesn't change.
 
 ### 2026-10-31: Throttle requests with rack-attack
@@ -179,7 +171,7 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ### 2026-10-31: Fetch rates in batches with a reliable client
 
-- Moved `RateApiClient` to `app/clients/`, keeping its name. The conventions' `Clients::` prefix would need an `app/clients/clients/` directory, which adds nothing for one client.
+- Moved `RateApiClient` to `app/clients/`, keeping its name. A `Clients::` prefix would need an `app/clients/clients/` directory, which adds nothing for one client.
 - The client now has a 1s connect and 2s read timeout (decision 13), and logs each call as JSON with its duration and status. It raises `TimeoutError`, `QuotaExceededError` or `Error`.
 - `PricingService` now requests all 36 combinations in one call (decision 5). Not cached yet, so each request still makes a call.
 - Added `504 pricing_upstream_timeout` and `503 pricing_unavailable`. Invalid JSON from upstream now returns `502` instead of `500`.
@@ -193,13 +185,13 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 - Added `json_model_rb`, `ApplicationRequestModel` and `Pricing::IndexRequest`, which replace the controller's hand-written validation and are now the only list of valid values.
 - Added `parse_request` to `ApplicationController`. It reads `request.query_parameters` directly, because this endpoint has no request body (decision 10).
 - Added `ApplicationRequestModel.errors_for`. `Dry::Struct` stops at the first problem and its messages expose internals, so this checks each declared field and keeps reporting every problem in plain wording.
-- Unknown query parameters now return `422 validation_failed`, because the conventions' strict base model rejects them. Clients that add extras, such as a cache-busting parameter, will get an error.
+- Unknown query parameters now return `422 validation_failed`, because the base request model is strict. This catches typos, but clients that add extras, such as a cache-busting parameter, also get an error.
 
 ### 2026-10-31: Serialize responses with Alba
 
 - Added `alba` and `Pricing::RateSerializer`, and the pricing response now renders through it. The response body is unchanged.
 - Set Alba's backend to `active_support`, so JSON generation stays consistent with the rest of Rails and adds no JSON gem.
-- Error responses stay as a hash in `ApplicationController`, because the conventions already give them one central place to render.
+- Error responses stay as a hash in `ApplicationController`, because they already have one central place to render.
 
 ### 2026-10-31: Standardize API errors
 
