@@ -159,6 +159,32 @@ RSpec.describe "Api::V1::Pricing", type: :request do
       end
     end
 
+    context "with an unknown parameter" do
+      before { get api_v1_pricing_url, params: valid_params.merge(hotle: "GitawayHotel") }
+
+      it "returns unprocessable content" do
+        expect(response).to have_http_status(422)
+      end
+
+      it "reports the unknown parameter" do
+        expect(error["details"]).to eq(
+          [ { "field" => "hotle", "message" => "is not a recognized parameter" } ]
+        )
+      end
+    end
+
+    context "with an array where a single value is expected" do
+      before { get api_v1_pricing_url, params: valid_params.merge(period: [ "Summer" ]) }
+
+      it "returns unprocessable content" do
+        expect(response).to have_http_status(422)
+      end
+
+      it "reports the period" do
+        expect(error["details"].map { |detail| detail["field"] }).to eq([ "period" ])
+      end
+    end
+
     context "with several invalid parameters" do
       before { get api_v1_pricing_url, params: { period: "Summer", hotel: "InvalidHotel" } }
 

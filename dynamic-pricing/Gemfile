@@ -35,6 +35,9 @@ gem "json", "< 3"
 # JSON serialization for API responses
 gem "alba", "~> 4.0"
 
+# Request models with JSON Schema generation
+gem "json_model_rb", "~> 0.1.30", require: "json_model"
+
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 # gem "rack-cors"
 

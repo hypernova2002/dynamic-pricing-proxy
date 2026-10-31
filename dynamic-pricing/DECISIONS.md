@@ -89,6 +89,13 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ## Change log
 
+### 2026-10-31: Parse query parameters with a request model
+
+- Added `json_model_rb`, `ApplicationRequestModel` and `Pricing::IndexRequest`, which replace the controller's hand-written validation and are now the only list of valid values.
+- Added `parse_request` to `ApplicationController`. It reads `request.query_parameters` directly, because this endpoint has no request body (decision 10).
+- Added `ApplicationRequestModel.errors_for`. `Dry::Struct` stops at the first problem and its messages expose internals, so this checks each declared field and keeps reporting every problem in plain wording.
+- Unknown query parameters now return `422 validation_failed`, because the conventions' strict base model rejects them. Clients that add extras, such as a cache-busting parameter, will get an error.
+
 ### 2026-10-31: Serialize responses with Alba
 
 - Added `alba` and `Pricing::RateSerializer`, and the pricing response now renders through it. The response body is unchanged.
