@@ -57,7 +57,10 @@ Measured on 2026-10-30 against `tripladev/rate-api`, run through Docker Compose,
 | 17 | 2026-10-31 | Accepted | A missing row returns `502` for that combination only, and the valid rows are still used | One bad row shouldn't block the other 35 prices. Once cached, this costs no extra quota, but the combination can fail for up to 5 minutes |
 | 18 | 2026-10-31 | Accepted | Duplicate rows overwrite, so the last one wins, and are logged | Rows have no identifiers to tell them apart, and rates vary per call, so duplicates may disagree |
 | 19 | 2026-10-31 | Accepted | Rows that weren't requested are ignored and logged | With no identifiers they can't be matched to anything, so they shouldn't be cached |
-| 20 | 2026-10-31 | Proposed | Never let traffic decide how often the API is called: a worker refreshes the cache, requests only read it, and one Redis key allows at most one call every 90s | The author requires that the quota is never hit, whatever the traffic. This caps calls at 960 a day. Replaces decisions 11 and 14 if accepted |
+| 20 | 2026-10-31 | Accepted | Never let traffic decide how often the API is called: a worker refreshes the cache, requests only read it, and one Redis key allows at most one call every 90s | The author requires that the quota is never hit, whatever the traffic. This caps calls at 960 a day. Replaces decisions 11 and 14 |
+| 21 | 2026-10-31 | Accepted | Run the worker as a loop in `bin/rate_refresher`, refreshing once rates reach 180s of age | What to do depends on the age of the rates and the last attempt, not the time of day. Cron can only run once a minute, and rake adds nothing to a process that never exits |
+| 22 | 2026-10-31 | Accepted | No quick retry. The next attempt comes 90s later | A quick retry would need a 180s gate to keep the 960 limit. It gives no benefit while rates are still valid, and spaced attempts cope better with a problem that lasts more than a moment |
+| 23 | 2026-10-31 | Accepted | Log failed refresh attempts at `info` | There are no quick retries to keep quiet, so each failure is worth seeing at the production default level |
 
 ### Known risks accepted
 
@@ -118,6 +121,14 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 - **Not applicable:** Pagy and Ransack (no list endpoints), uids (no exposed records), migrations and background jobs (none needed).
 
 ## Change log
+
+### 2026-10-31: Add Redis as the cache store
+
+- Added the `redis` gem and a `redis` Compose service, and set `Rails.cache` to use it in every environment except test (decision 6). `REDIS_URL` is set in Compose.
+- The store's `error_handler` now re-raises (decision 12), and `ApplicationController` turns Redis errors into `503 pricing_unavailable`. The handler is in `config/application.rb` because Rails builds the cache store before `config/initializers` runs.
+- Specs use `memory_store`, so they run without a Redis server. The handler's behaviour is tested against an unreachable Redis.
+- Nothing reads or writes the cache yet.
+- Logged the worker design as accepted (decisions 20 to 23), which replaces the lock and failure-key options discussed earlier.
 
 ### 2026-10-31: Fetch rates in batches with a reliable client
 

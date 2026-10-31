@@ -264,6 +264,10 @@ GEM
     rdoc (6.14.2)
       erb
       psych (>= 4.0.0)
+    redis (6.0.0)
+      redis-client (= 0.30.1)
+    redis-client (0.30.1)
+      connection_pool
     regexp_parser (2.13.1)
     reline (0.6.2)
       io-console (~> 0.5)
@@ -351,6 +355,7 @@ DEPENDENCIES
   listen (~> 3.3)
   puma (>= 5.0)
   rails (~> 7.1.5, >= 7.1.5.2)
+  redis (~> 6.0)
   rspec-rails (~> 7.1)
   rubocop-rails-omakase (~> 1.1)
   sqlite3 (>= 1.4)

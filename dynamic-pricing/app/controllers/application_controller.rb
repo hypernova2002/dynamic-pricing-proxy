@@ -1,6 +1,7 @@
 class ApplicationController < ActionController::API
   rescue_from StandardError, with: :render_internal_error
   rescue_from ApiError, with: :render_api_error
+  rescue_from Redis::BaseError, ConnectionPool::TimeoutError, with: :render_cache_unavailable
 
   private
 
@@ -12,6 +13,11 @@ class ApplicationController < ActionController::API
 
   def render_api_error(error)
     render json: { error: { code: error.code, message: error.message, details: error.details } }, status: error.status
+  end
+
+  def render_cache_unavailable(exception)
+    Rails.logger.error("#{exception.class}: #{exception.message}")
+    render_api_error(ApiError.new(:pricing_unavailable))
   end
 
   def render_internal_error(exception)

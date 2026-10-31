@@ -40,5 +40,15 @@ module Interview
     # Middleware like session, flash, cookies can be added back manually.
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
+
+    # The store reports Redis errors as cache misses by default. Raise them instead,
+    # so a Redis outage can't be mistaken for missing rates.
+    CACHE_ERROR_HANDLER = ->(method:, returning:, exception:) { raise exception }
+
+    config.cache_store = :redis_cache_store, {
+      url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"),
+      namespace: "dynamic_pricing",
+      error_handler: CACHE_ERROR_HANDLER
+    }
   end
 end

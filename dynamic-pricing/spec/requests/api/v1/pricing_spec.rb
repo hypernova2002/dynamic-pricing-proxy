@@ -97,6 +97,27 @@ RSpec.describe "Api::V1::Pricing", type: :request do
       end
     end
 
+    [ Redis::CannotConnectError, ConnectionPool::TimeoutError ].each do |redis_error|
+      context "when the cache fails with #{redis_error}" do
+        before do
+          allow(RateApiClient).to receive(:get_rates).and_raise(redis_error, "redis://secret-host")
+          get api_v1_pricing_url, params: valid_params
+        end
+
+        it "returns service unavailable" do
+          expect(response).to have_http_status(:service_unavailable)
+        end
+
+        it "returns the unavailable error code" do
+          expect(error["code"]).to eq("pricing_unavailable")
+        end
+
+        it "does not expose the Redis details" do
+          expect(response.body).not_to include("secret-host")
+        end
+      end
+    end
+
     context "when an unexpected error occurs" do
       before do
         allow(RateApiClient).to receive(:get_rates).and_raise(StandardError, "secret internal detail")
