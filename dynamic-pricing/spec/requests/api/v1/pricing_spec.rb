@@ -4,18 +4,15 @@ RSpec.describe "Api::V1::Pricing", type: :request do
   let(:valid_params) { { period: "Summer", hotel: "FloatingPointResort", room: "SingletonRoom" } }
   let(:json_response) { JSON.parse(response.body) }
   let(:error) { json_response["error"] }
+  let(:rate_api_url) { "#{RateApiClient.base_uri}/pricing" }
 
   describe "GET /api/v1/pricing" do
     context "when the rate API succeeds" do
-      let(:rate_response) do
-        double(
-          success?: true,
-          body: { "rates" => [ valid_params.transform_keys(&:to_s).merge("rate" => "15000") ] }.to_json
-        )
-      end
-
       before do
-        allow(RateApiClient).to receive(:get_rate).and_return(rate_response)
+        stub_request(:post, rate_api_url).to_return(
+          status: 200,
+          body: { rates: [ valid_params.merge(rate: 15000) ] }.to_json
+        )
         get api_v1_pricing_url, params: valid_params
       end
 
@@ -28,15 +25,13 @@ RSpec.describe "Api::V1::Pricing", type: :request do
       end
 
       it "returns only the rate" do
-        expect(json_response).to eq("rate" => "15000")
+        expect(json_response).to eq("rate" => 15000)
       end
     end
 
     context "when the rate API returns an error" do
-      let(:rate_response) { double(success?: false, body: { "error" => "Unauthorized" }.to_json) }
-
       before do
-        allow(RateApiClient).to receive(:get_rate).and_return(rate_response)
+        stub_request(:post, rate_api_url).to_return(status: 401, body: { error: "Unauthorized" }.to_json)
         get api_v1_pricing_url, params: valid_params
       end
 
@@ -54,10 +49,8 @@ RSpec.describe "Api::V1::Pricing", type: :request do
     end
 
     context "when the rate API omits the requested rate" do
-      let(:rate_response) { double(success?: true, body: { "rates" => [] }.to_json) }
-
       before do
-        allow(RateApiClient).to receive(:get_rate).and_return(rate_response)
+        stub_request(:post, rate_api_url).to_return(status: 200, body: { rates: [] }.to_json)
         get api_v1_pricing_url, params: valid_params
       end
 
@@ -70,9 +63,43 @@ RSpec.describe "Api::V1::Pricing", type: :request do
       end
     end
 
+    context "when the rate API times out" do
+      before do
+        stub_request(:post, rate_api_url).to_raise(Net::ReadTimeout)
+        get api_v1_pricing_url, params: valid_params
+      end
+
+      it "returns gateway timeout" do
+        expect(response).to have_http_status(:gateway_timeout)
+      end
+
+      it "returns the timeout error code" do
+        expect(error["code"]).to eq("pricing_upstream_timeout")
+      end
+    end
+
+    context "when the rate API quota is used up" do
+      before do
+        stub_request(:post, rate_api_url).to_return(status: 429, body: { error: "Rate limit exceeded (1000/day)" }.to_json)
+        get api_v1_pricing_url, params: valid_params
+      end
+
+      it "returns service unavailable" do
+        expect(response).to have_http_status(:service_unavailable)
+      end
+
+      it "returns the unavailable error code" do
+        expect(error["code"]).to eq("pricing_unavailable")
+      end
+
+      it "does not expose the upstream message" do
+        expect(response.body).not_to include("1000/day")
+      end
+    end
+
     context "when an unexpected error occurs" do
       before do
-        allow(RateApiClient).to receive(:get_rate).and_raise(StandardError, "secret internal detail")
+        allow(RateApiClient).to receive(:get_rates).and_raise(StandardError, "secret internal detail")
         get api_v1_pricing_url, params: valid_params
       end
 

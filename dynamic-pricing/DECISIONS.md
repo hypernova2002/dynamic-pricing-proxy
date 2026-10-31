@@ -21,6 +21,9 @@ Measured on 2026-10-30 against `tripladev/rate-api`, run through Docker Compose,
 |---|---|---|
 | Batch of all 36 combinations | Works. Successful calls took 3ms at p50 and 43ms at most | Batching is viable, and short timeouts are safe |
 | `rate` type | Integer. The documentation shows a string | Accept both and return an integer |
+| Row identifiers | None. A row is identified only by its `period`, `hotel` and `room` values, and key order shouldn't be relied on | Match rows by those three values, never by position |
+| Timestamps | None. Nothing says when a rate was calculated or when it expires | Track the 5-minute window on our side, and start it before the call is sent |
+| Batch size limit | None documented. Only 36 items have been tested | Batches larger than 36 are unverified |
 | Repeated calls | A different rate each time | Caching is directly observable in tests and by hand |
 | Random HTTP 500 | 87 of 970 calls (9%) | Failures are routine, so each one needs a clear error response |
 | Random hang | 73 of 970 calls (7.5%). One test call was still hanging at 120s | Strict timeouts are essential. The scaffold has none |
@@ -51,12 +54,39 @@ Measured on 2026-10-30 against `tripladev/rate-api`, run through Docker Compose,
 | 14 | 2026-10-30 | Accepted | No retries, failure backoff or daily call counter | Chosen by the author for simplicity. The next request after a failure simply tries again |
 | 15 | 2026-10-30 | Accepted | Generate API docs with openapi-ruby from the RSpec request specs | Moving to RSpec (decision 9) makes this possible. It matches the conventions and keeps the docs in sync with the tests |
 | 16 | 2026-10-30 | Accepted | Update this document in every commit | Requested by the author, so each commit carries its own reasoning |
+| 17 | 2026-10-31 | Accepted | A missing row returns `502` for that combination only, and the valid rows are still used | One bad row shouldn't block the other 35 prices. Once cached, this costs no extra quota, but the combination can fail for up to 5 minutes |
+| 18 | 2026-10-31 | Accepted | Duplicate rows overwrite, so the last one wins, and are logged | Rows have no identifiers to tell them apart, and rates vary per call, so duplicates may disagree |
+| 19 | 2026-10-31 | Accepted | Rows that weren't requested are ignored and logged | With no identifiers they can't be matched to anything, so they shouldn't be cached |
+| 20 | 2026-10-31 | Proposed | Never let traffic decide how often the API is called: a worker refreshes the cache, requests only read it, and one Redis key allows at most one call every 90s | The author requires that the quota is never hit, whatever the traffic. This caps calls at 960 a day. Replaces decisions 11 and 14 if accepted |
 
 ### Known risks accepted
 
 - **Failed refreshes reach users.** About 1 call in 6 fails, so about 1 in 6 refreshes returns an error to the request that triggered it. That is roughly 57 errors a day at 10,000 requests, and the next request tries again.
 - **Normal quota use rises slightly.** Failed calls spend quota, so healthy use is about 345 calls a day rather than 288.
 - **A long outage can exhaust the quota.** Every request during an outage makes an upstream call, so 1,000 requests would use up the day's quota. Rates then stay unavailable after the outage ends, until the quota resets.
+
+## Scaling limits
+
+The brief only asks for rates across a fixed set of 36 combinations, at 10,000 requests a day. It doesn't mention an arbitrary or growing number of hotels, so one batch is enough for this assignment.
+
+One batch per 5-minute window won't hold if the catalogue grows:
+
+| Batches per window | Calls/day if every call succeeds | Calls/day at the measured 1-in-6 failure rate, retried until success | Within 1,000? |
+|---|---|---|---|
+| 1 | 288 | about 345 | Yes |
+| 2 | 576 | about 690 | Yes |
+| 3 | 864 | about 1,035 | No, once failures are counted |
+
+Splitting batches therefore only helps up to a point. The quota allows about 2 batches per window, so capacity is about 2 × the largest batch the API accepts. That batch limit is unknown. Beyond it, the options are a higher quota, more tokens, or fetching only the combinations in demand.
+
+**Expected long-term design:** a worker process refreshes the cache, and requests only read from it.
+
+- Users no longer see failed refreshes, because retries happen in the worker while the current rates are still valid.
+- Refreshing early costs quota. Refreshing every 4 minutes takes 360 windows a day rather than 288, which lowers the numbers above.
+- Only one scheduler may run, because the token's quota is shared.
+- Splitting needs one cache entry per batch, so that one failed batch doesn't invalidate the others.
+
+**Decision for now:** keep one batch, as the brief's fixed scope doesn't need more. Whether to move to a worker now is under review (decision 20).
 
 ## Convention review
 
@@ -88,6 +118,17 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 - **Not applicable:** Pagy and Ransack (no list endpoints), uids (no exposed records), migrations and background jobs (none needed).
 
 ## Change log
+
+### 2026-10-31: Fetch rates in batches with a reliable client
+
+- Moved `RateApiClient` to `app/clients/`, keeping its name. The conventions' `Clients::` prefix would need an `app/clients/clients/` directory, which adds nothing for one client.
+- The client now has a 1s connect and 2s read timeout (decision 13), and logs each call as JSON with its duration and status. It raises `TimeoutError`, `QuotaExceededError` or `Error`.
+- `PricingService` now requests all 36 combinations in one call (decision 5). Not cached yet, so each request still makes a call.
+- Added `504 pricing_upstream_timeout` and `503 pricing_unavailable`. Invalid JSON from upstream now returns `502` instead of `500`.
+- `rate` is now always returned as an integer, because the API returns integers but documents strings. This changes the response type from what the scaffold's tests implied.
+- Invalid rows are logged and skipped, so one bad row doesn't take down the other 35 rates. Asking for a skipped combination returns `502`.
+- Missing, duplicate and unrequested rows are now logged and handled as decisions 17 to 19 describe.
+- Added WebMock so the client and request specs run against stubbed HTTP. The scaffold's mocks hid its lost-error-message bug by returning a Hash where the real client returns a String.
 
 ### 2026-10-31: Parse query parameters with a request model
 

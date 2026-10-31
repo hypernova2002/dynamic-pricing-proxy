@@ -1,7 +1,11 @@
 module Pricing
   class IndexRequest < ApplicationRequestModel
-    attribute :period, JsonModel::Types::String.enum("Summer", "Autumn", "Winter", "Spring")
-    attribute :hotel, JsonModel::Types::String.enum("FloatingPointResort", "GitawayHotel", "RecursionRetreat")
-    attribute :room, JsonModel::Types::String.enum("SingletonRoom", "BooleanTwin", "RestfulKing")
+    PERIODS = %w[Summer Autumn Winter Spring].freeze
+    HOTELS = %w[FloatingPointResort GitawayHotel RecursionRetreat].freeze
+    ROOMS = %w[SingletonRoom BooleanTwin RestfulKing].freeze
+
+    attribute :period, JsonModel::Types::String.enum(*PERIODS)
+    attribute :hotel, JsonModel::Types::String.enum(*HOTELS)
+    attribute :room, JsonModel::Types::String.enum(*ROOMS)
   end
 end

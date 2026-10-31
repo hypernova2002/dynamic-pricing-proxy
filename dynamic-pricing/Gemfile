@@ -57,3 +57,7 @@ group :development do
   # Live reloading for development
   gem "listen", "~> 3.3"
 end
+
+group :test do
+  gem "webmock", "~> 3.34"
+end
