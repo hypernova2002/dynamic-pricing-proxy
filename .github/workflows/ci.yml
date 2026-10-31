@@ -24,6 +24,10 @@ jobs:
       run: docker compose exec interview-dev bundle exec rubocop
     - name: Run all tests
       run: docker compose exec -e RAILS_ENV=test interview-dev bundle exec rspec
+    - name: Check API docs are up to date
+      run: |
+        docker compose exec interview-dev bin/rails openapi_ruby:generate
+        git diff --exit-code -- openapi
     - name: Test API endpoint returns 200
       run: |
         echo "Testing API endpoint..."

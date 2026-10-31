@@ -127,6 +127,15 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ## Change log
 
+### 2026-10-31: Generate API docs with openapi-ruby
+
+- Added `openapi-ruby` in the development and test groups only, because docs are generated from specs (decision 15). `openapi/public_api.yaml` is the committed output.
+- `spec/openapi/pricing_spec.rb` documents the endpoint and exercises every response against its schema. Components live in `spec/api_components`, since the gem isn't installed in production.
+- The error `code` values and the query parameter values come from `ErrorCodes::REGISTRY` and `Pricing::IndexRequest`, so they can't drift from the code. A spec fails if a registered error code has no documented response.
+- Turned off the gem's automatic `400` response, because this API never returns one.
+- Did not mount the gem's engine or Swagger UI. The YAML file is enough for one endpoint, and this adds no routes to the running app.
+- CI regenerates the docs and fails if the committed file differs.
+
 ### 2026-10-31: Add CORS and explicit UTC
 
 - Added `rack-cors` with `origins "*"`, the conventions' default until real origins are known. This should be narrowed before production if browsers will call the API directly.

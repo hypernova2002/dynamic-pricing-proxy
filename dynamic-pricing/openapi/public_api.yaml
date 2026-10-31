@@ -1,0 +1,147 @@
+---
+openapi: 3.1.0
+info:
+  title: Dynamic Pricing Proxy API
+  version: v1
+  description: Serves hotel room rates, cached for at most five minutes from the dynamic
+    pricing model.
+paths:
+  "/api/v1/pricing":
+    get:
+      summary: Get a room rate
+      tags:
+      - Pricing
+      operationId: getPricing
+      description: Returns the current rate for a room. Rates come from a cache kept
+        up to date by a background worker, so requests never call the pricing model
+        directly.
+      parameters:
+      - name: period
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - Summer
+          - Autumn
+          - Winter
+          - Spring
+      - name: hotel
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - FloatingPointResort
+          - GitawayHotel
+          - RecursionRetreat
+      - name: room
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - SingletonRoom
+          - BooleanTwin
+          - RestfulKing
+      responses:
+        '200':
+          description: The current rate
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Rate"
+        '422':
+          description: A parameter is missing, invalid or not recognized (validation_failed)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '429':
+          description: Too many requests from this IP (rate_limited)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+          headers:
+            Retry-After:
+              description: Seconds until requests are allowed again.
+              schema:
+                type: integer
+        '500':
+          description: An unexpected error (internal_error)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '502':
+          description: No current rate for this room, while other rates are available
+            (rate_not_available)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '503':
+          description: No current rates are available (pricing_unavailable)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+servers:
+- url: "/"
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+      - error
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - details
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              enum:
+              - validation_failed
+              - rate_not_available
+              - pricing_unavailable
+              - rate_limited
+              - internal_error
+              description: A stable, machine-readable code.
+            message:
+              type: string
+              description: A summary that is safe to show to users.
+            details:
+              type: array
+              description: Field-level problems. Empty when the error isn't about
+                a specific field.
+              items:
+                type: object
+                required:
+                - field
+                - message
+                additionalProperties: false
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+      title: ErrorResponse
+    Rate:
+      type: object
+      required:
+      - rate
+      additionalProperties: false
+      properties:
+        rate:
+          type: integer
+          minimum: 1
+          description: The room rate, no more than five minutes old.
+      title: Rate
+security: []

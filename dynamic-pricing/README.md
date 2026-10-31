@@ -6,6 +6,7 @@ A Rails API that sits in front of Tripla's dynamic pricing model and serves hote
 
 - [spec.md](spec.md): the original assignment brief
 - [DECISIONS.md](DECISIONS.md): design decisions, convention review and change log
+- [openapi/public_api.yaml](openapi/public_api.yaml): the API reference, generated from the specs
 
 ## Setup
 
@@ -41,6 +42,14 @@ docker compose exec -e RAILS_ENV=test interview-dev bundle exec rspec spec/reque
 
 ```bash
 docker compose exec interview-dev bundle exec rubocop
+```
+
+## API docs
+
+Regenerate the reference after changing the API. CI fails if it's out of date.
+
+```bash
+docker compose exec interview-dev bin/rails openapi_ruby:generate
 ```
 
 ## CI

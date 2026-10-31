@@ -54,6 +54,9 @@ group :development, :test do
   gem "rspec-rails", "~> 7.1"
 
   gem "rubocop-rails-omakase", "~> 1.1", require: false
+
+  # Generates OpenAPI docs from request specs
+  gem "openapi-ruby", "~> 5.0"
 end
 
 group :development do
