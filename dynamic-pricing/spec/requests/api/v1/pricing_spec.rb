@@ -9,7 +9,7 @@ RSpec.describe "Api::V1::Pricing", type: :request do
       let(:rate_response) do
         double(
           success?: true,
-          body: { "rates" => [valid_params.transform_keys(&:to_s).merge("rate" => "15000")] }.to_json
+          body: { "rates" => [ valid_params.transform_keys(&:to_s).merge("rate" => "15000") ] }.to_json
         )
       end
 

@@ -89,6 +89,13 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ## Change log
 
+### 2026-10-31: Add Rubocop
+
+- Added `rubocop-rails-omakase` and `.rubocop.yml`. The repository had no Rubocop config, and this is the Rails default ruleset with a small set of style rules.
+- Fixed the existing style offenses, mostly quote style. No behaviour changes.
+- Added a lint step to CI before the tests, so style failures stop the run early.
+- Pinned `json` below 3. Rubocop added it to the lockfile and Bundler chose 3.1.0, which breaks JSON rendering on Rails 7.1 by rejecting its `quirks_mode` option. The specs caught this before commit.
+
 ### 2026-10-30: Replace Minitest with RSpec
 
 - Added `rspec-rails` and generated `.rspec` and the `spec/` helpers.

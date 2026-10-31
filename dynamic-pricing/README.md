@@ -37,6 +37,12 @@ docker compose exec -e RAILS_ENV=test interview-dev bundle exec rspec
 docker compose exec -e RAILS_ENV=test interview-dev bundle exec rspec spec/requests/api/v1/pricing_spec.rb
 ```
 
+## Lint
+
+```bash
+docker compose exec interview-dev bundle exec rubocop
+```
+
 ## CI
 
 CI builds `docker-compose.yml` from the example file, so the repository needs a `RATE_API_TOKEN` Actions secret.

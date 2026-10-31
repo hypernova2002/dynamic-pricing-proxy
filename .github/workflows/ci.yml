@@ -20,6 +20,8 @@ jobs:
       run: sed "s/REPLACE_WITH_RATE_API_TOKEN/$RATE_API_TOKEN/" docker-compose.example.yml > docker-compose.yml
     - name: Start services
       run: docker compose up -d --build
+    - name: Lint
+      run: docker compose exec interview-dev bundle exec rubocop
     - name: Run all tests
       run: docker compose exec -e RAILS_ENV=test interview-dev bundle exec rspec
     - name: Test API endpoint returns 200

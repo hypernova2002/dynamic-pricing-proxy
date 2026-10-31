@@ -27,7 +27,10 @@ gem "tzinfo-data", platforms: %i[ windows jruby ]
 gem "bootsnap", require: false
 
 # HTTP client for external API call
-gem 'httparty'
+gem "httparty"
+
+# json 3 rejects the quirks_mode option that Rails 7.1 passes to JSON.generate.
+gem "json", "< 3"
 
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 # gem "rack-cors"
@@ -37,6 +40,8 @@ group :development, :test do
   gem "debug", platforms: %i[ mri windows ]
 
   gem "rspec-rails", "~> 7.1"
+
+  gem "rubocop-rails-omakase", "~> 1.1", require: false
 end
 
 group :development do
@@ -46,4 +51,3 @@ group :development do
   # Live reloading for development
   gem "listen", "~> 3.3"
 end
-
