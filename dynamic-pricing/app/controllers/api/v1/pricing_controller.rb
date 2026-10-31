@@ -14,7 +14,7 @@ class Api::V1::PricingController < ApplicationController
 
     service = Api::V1::PricingService.new(period:, hotel:, room:)
     service.run
-    render json: { rate: service.result }
+    render json: Pricing::RateSerializer.new({ rate: service.result })
   end
 
   private

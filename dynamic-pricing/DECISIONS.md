@@ -89,6 +89,12 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ## Change log
 
+### 2026-10-31: Serialize responses with Alba
+
+- Added `alba` and `Pricing::RateSerializer`, and the pricing response now renders through it. The response body is unchanged.
+- Set Alba's backend to `active_support`, so JSON generation stays consistent with the rest of Rails and adds no JSON gem.
+- Error responses stay as a hash in `ApplicationController`, because the conventions already give them one central place to render.
+
 ### 2026-10-31: Standardize API errors
 
 - Added `ErrorCodes::REGISTRY` and `ApiError`, with one `rescue_from` in `ApplicationController` rendering `{ "error": { "code", "message", "details" } }`.

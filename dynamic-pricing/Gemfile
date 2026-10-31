@@ -32,6 +32,9 @@ gem "httparty"
 # json 3 rejects the quirks_mode option that Rails 7.1 passes to JSON.generate.
 gem "json", "< 3"
 
+# JSON serialization for API responses
+gem "alba", "~> 4.0"
+
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 # gem "rack-cors"
 

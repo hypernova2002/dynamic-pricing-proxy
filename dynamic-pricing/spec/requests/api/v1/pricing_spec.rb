@@ -27,8 +27,8 @@ RSpec.describe "Api::V1::Pricing", type: :request do
         expect(response.media_type).to eq("application/json")
       end
 
-      it "returns the rate" do
-        expect(json_response["rate"]).to eq("15000")
+      it "returns only the rate" do
+        expect(json_response).to eq("rate" => "15000")
       end
     end
 
