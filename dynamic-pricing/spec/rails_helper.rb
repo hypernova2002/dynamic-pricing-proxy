@@ -66,6 +66,10 @@ RSpec.configure do |config|
 
   # Filter lines from Rails gems in backtraces.
   config.filter_rails_from_backtrace!
+
+  config.include ActiveSupport::Testing::TimeHelpers
+  config.before { Rails.cache.clear }
+  config.after { travel_back }
   # arbitrary gems may also be filtered via:
   # config.filter_gems_from_backtrace("gem name")
 end

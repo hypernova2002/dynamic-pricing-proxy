@@ -54,7 +54,7 @@ Measured on 2026-10-30 against `tripladev/rate-api`, run through Docker Compose,
 | 14 | 2026-10-30 | Accepted | No retries, failure backoff or daily call counter | Chosen by the author for simplicity. The next request after a failure simply tries again |
 | 15 | 2026-10-30 | Accepted | Generate API docs with openapi-ruby from the RSpec request specs | Moving to RSpec (decision 9) makes this possible. It matches the conventions and keeps the docs in sync with the tests |
 | 16 | 2026-10-30 | Accepted | Update this document in every commit | Requested by the author, so each commit carries its own reasoning |
-| 17 | 2026-10-31 | Accepted | A missing row returns `502` for that combination only, and the valid rows are still used | One bad row shouldn't block the other 35 prices. Once cached, this costs no extra quota, but the combination can fail for up to 5 minutes |
+| 17 | 2026-10-31 | Accepted | A missing or invalid row keeps its earlier rate until that rate's own 5 minutes end, then returns `502` for that combination only. Valid rows are still used | Requested by the author. One bad row shouldn't block the other 35 prices or discard a rate that is still valid. Each row therefore needs its own timestamp, so a row kept from an earlier fetch can't exceed the limit |
 | 18 | 2026-10-31 | Accepted | Duplicate rows overwrite, so the last one wins, and are logged | Rows have no identifiers to tell them apart, and rates vary per call, so duplicates may disagree |
 | 19 | 2026-10-31 | Accepted | Rows that weren't requested are ignored and logged | With no identifiers they can't be matched to anything, so they shouldn't be cached |
 | 20 | 2026-10-31 | Accepted | Never let traffic decide how often the API is called: a worker refreshes the cache, requests only read it, and one Redis key allows at most one call every 90s | The author requires that the quota is never hit, whatever the traffic. This caps calls at 960 a day. Replaces decisions 11 and 14 |
@@ -121,6 +121,14 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 - **Not applicable:** Pagy and Ransack (no list endpoints), uids (no exposed records), migrations and background jobs (none needed).
 
 ## Change log
+
+### 2026-10-31: Cache rates in a snapshot
+
+- Added `Pricing::RateSnapshot`, which holds all rates under one cache key (decision 5), each with its own `fetched_at`, so a row kept from an earlier fetch expires on its own schedule (decision 17).
+- The entry expires 5 minutes after the latest `fetched_at`, which is taken before the call is sent because the API gives no timestamps (decision 7). Reads also check each rate's age, so a rate can't outlive the limit if a TTL is ever wrong.
+- Moved fetching and row validation from `PricingService` to `Pricing::RateFetcher`, so the worker can use them.
+- A response with no valid rates is now an error and leaves the stored snapshot in place, rather than replacing good rates with nothing.
+- For now, a cache miss still fetches during the request, so this commit works on its own. The worker commit removes that (decision 20). Until then, the quota guarantee does not hold.
 
 ### 2026-10-31: Add Redis as the cache store
 

@@ -29,6 +29,32 @@ RSpec.describe "Api::V1::Pricing", type: :request do
       end
     end
 
+    context "when rates are requested repeatedly" do
+      let(:start) { Time.utc(2026, 1, 1, 12, 0, 0) }
+      let!(:rate_api) do
+        stub_request(:post, rate_api_url).to_return(
+          status: 200,
+          body: { rates: [ valid_params.merge(rate: 15000) ] }.to_json
+        )
+      end
+
+      before { travel_to(start) }
+
+      it "calls the API once within five minutes" do
+        get api_v1_pricing_url, params: valid_params
+        travel_to(start + 299.seconds)
+        get api_v1_pricing_url, params: valid_params
+        expect(rate_api).to have_been_requested.once
+      end
+
+      it "calls the API again once five minutes have passed" do
+        get api_v1_pricing_url, params: valid_params
+        travel_to(start + 300.seconds)
+        get api_v1_pricing_url, params: valid_params
+        expect(rate_api).to have_been_requested.twice
+      end
+    end
+
     context "when the rate API returns an error" do
       before do
         stub_request(:post, rate_api_url).to_return(status: 401, body: { error: "Unauthorized" }.to_json)
