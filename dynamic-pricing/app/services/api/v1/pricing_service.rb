@@ -9,12 +9,11 @@ module Api::V1
     def run
       # TODO: Start to implement here
       rate = RateApiClient.get_rate(period: @period, hotel: @hotel, room: @room)
-      if rate.success?
-        parsed_rate = JSON.parse(rate.body)
-        @result = parsed_rate["rates"].detect { |r| r["period"] == @period && r["hotel"] == @hotel && r["room"] == @room }&.dig("rate")
-      else
-        errors << rate.body["error"]
-      end
+      raise ApiError.new(:pricing_upstream_error) unless rate.success?
+
+      parsed_rate = JSON.parse(rate.body)
+      @result = parsed_rate["rates"].detect { |r| r["period"] == @period && r["hotel"] == @hotel && r["room"] == @room }&.dig("rate")
+      raise ApiError.new(:pricing_upstream_error) if @result.nil?
     end
   end
 end

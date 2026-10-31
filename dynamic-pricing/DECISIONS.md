@@ -89,6 +89,16 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ## Change log
 
+### 2026-10-31: Standardize API errors
+
+- Added `ErrorCodes::REGISTRY` and `ApiError`, with one `rescue_from` in `ApplicationController` rendering `{ "error": { "code", "message", "details" } }`.
+- Invalid parameters now return `422 validation_failed` instead of `400`, and `details` lists every bad field at once rather than only the first.
+- Upstream failures now return `502 pricing_upstream_error` instead of `400`, because they aren't the client's fault. The upstream message is no longer passed through.
+- Fixed three scaffold bugs: upstream error messages were lost because `rate.body["error"]` ran on a String, a missing rate returned `200 {"rate": null}`, and unexpected exceptions returned Rails' default error page.
+- Unexpected exceptions now return `500 internal_error` and log the detail on the server only.
+- Removed `valid?` and `errors` from `BaseService`, since services now raise.
+- Timeout and availability codes will arrive with the code that raises them. Invalid JSON from upstream currently returns `500`, until the client change handles it as an upstream error.
+
 ### 2026-10-31: Add Rubocop
 
 - Added `rubocop-rails-omakase` and `.rubocop.yml`. The repository had no Rubocop config, and this is the Rails default ruleset with a small set of style rules.
