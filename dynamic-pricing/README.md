@@ -31,10 +31,10 @@ curl 'http://localhost:3000/api/v1/pricing?period=Summer&hotel=FloatingPointReso
 
 ```bash
 # Full suite
-docker compose exec interview-dev ./bin/rails test
+docker compose exec -e RAILS_ENV=test interview-dev bundle exec rspec
 
 # One file
-docker compose exec interview-dev ./bin/rails test test/controllers/pricing_controller_test.rb
+docker compose exec -e RAILS_ENV=test interview-dev bundle exec rspec spec/requests/api/v1/pricing_spec.rb
 ```
 
 ## CI

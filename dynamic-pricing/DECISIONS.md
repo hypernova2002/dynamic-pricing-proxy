@@ -89,6 +89,15 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ## Change log
 
+### 2026-10-30: Replace Minitest with RSpec
+
+- Added `rspec-rails` and generated `.rspec` and the `spec/` helpers.
+- Ported the controller tests to `spec/requests/api/v1/pricing_spec.rb`, with one behaviour per example. They still assert the scaffold's behaviour, and later commits change that alongside the code.
+- Removed `test/`, and updated CI and the README to run `bundle exec rspec`.
+- Pass `RAILS_ENV=test` on the command that runs the specs. The Dockerfile sets it to `development`, which `bin/rails test` overrode but `rspec` doesn't, and `rails_helper` keeps its generated default.
+- Did not add factory_bot, because there are no models to build.
+- This makes openapi-ruby possible (decision 15), since it generates docs from request specs.
+
 ### 2026-10-30: Repository setup
 
 - Renamed `README.md` to `spec.md`, unchanged.
