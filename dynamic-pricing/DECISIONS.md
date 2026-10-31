@@ -127,6 +127,14 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ## Change log
 
+### 2026-10-31: Throttle requests with rack-attack
+
+- Added `rack-attack`, limiting each IP to 300 requests a minute. Going over returns `429 rate_limited` with `Retry-After`, in the standard error format.
+- This protects the app and Redis, not the upstream quota, which traffic can no longer affect. The limit is a judgement call: 10,000 requests a day averages about 7 a minute, so this leaves wide room for peaks or for many users behind one IP.
+- It counts `request.ip`, so behind a proxy, Rails must be configured to trust that proxy, or all clients would share one limit.
+- Gave rack-attack its own Redis store. With `Rails.cache`, its middleware would hit the re-raised errors from decision 12 and return a raw `500` during an outage. Its store fails open, so requests reach the controller and get the standard `503`.
+- Added `ApiError#to_h`, so the middleware and controller share one error format.
+
 ### 2026-10-31: Refresh rates in a worker
 
 - Added `Pricing::RateRefresher` and `bin/rate_refresher`, which checks every 5s and refreshes once rates reach 180s of age (decision 21).

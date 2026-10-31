@@ -10,4 +10,8 @@ class ApiError < StandardError
     @details = details
     super(definition[:default_message])
   end
+
+  def to_h
+    { error: { code: code, message: message, details: details } }
+  end
 end

@@ -12,7 +12,7 @@ class ApplicationController < ActionController::API
   end
 
   def render_api_error(error)
-    render json: { error: { code: error.code, message: error.message, details: error.details } }, status: error.status
+    render json: error.to_h, status: error.status
   end
 
   def render_cache_unavailable(exception)

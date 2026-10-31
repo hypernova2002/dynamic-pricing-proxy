@@ -41,6 +41,9 @@ gem "json_model_rb", "~> 0.1.30", require: "json_model"
 # Shared cache for rates, because the API quota is per token rather than per process
 gem "redis", "~> 6.0"
 
+# Request throttling
+gem "rack-attack", "~> 6.8"
+
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 # gem "rack-cors"
 
