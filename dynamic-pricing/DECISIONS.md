@@ -127,6 +127,13 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 
 ## Change log
 
+### 2026-10-31: Add CORS and explicit UTC
+
+- Added `rack-cors` with `origins "*"`, the conventions' default until real origins are known. This should be narrowed before production if browsers will call the API directly.
+- Allowed only `GET`, `HEAD` and `OPTIONS`, narrower than the conventions' list, because the API has no write endpoints.
+- Exposed `Retry-After` so browsers can read it on a `429`, in place of the conventions' pagination headers, as there are no list endpoints.
+- Set the time zone and Active Record's default to UTC explicitly. Both were already the Rails default, so behaviour doesn't change.
+
 ### 2026-10-31: Throttle requests with rack-attack
 
 - Added `rack-attack`, limiting each IP to 300 requests a minute. Going over returns `429 rate_limited` with `Retry-After`, in the standard error format.
