@@ -1,0 +1,17 @@
+#!/usr/bin/env ruby
+require_relative "../config/environment"
+
+TICK_INTERVAL = 5
+
+$stdout.sync = true
+Rails.logger.broadcast_to(ActiveSupport::Logger.new($stdout)) if Rails.env.development?
+
+running = true
+%w[INT TERM].each { |signal| trap(signal) { running = false } }
+
+refresher = Pricing::RateRefresher.new
+
+while running
+  refresher.tick
+  sleep TICK_INTERVAL
+end

@@ -2,17 +2,15 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::Pricing", type: :request do
   let(:valid_params) { { period: "Summer", hotel: "FloatingPointResort", room: "SingletonRoom" } }
+  let(:valid_key) { [ "Summer", "FloatingPointResort", "SingletonRoom" ] }
   let(:json_response) { JSON.parse(response.body) }
   let(:error) { json_response["error"] }
-  let(:rate_api_url) { "#{RateApiClient.base_uri}/pricing" }
+  let!(:rate_api) { stub_request(:post, "#{RateApiClient.base_uri}/pricing") }
 
   describe "GET /api/v1/pricing" do
-    context "when the rate API succeeds" do
+    context "with valid rates" do
       before do
-        stub_request(:post, rate_api_url).to_return(
-          status: 200,
-          body: { rates: [ valid_params.merge(rate: 15000) ] }.to_json
-        )
+        Pricing::RateSnapshot.store(rates: { valid_key => 15000 }, fetched_at: Time.current)
         get api_v1_pricing_url, params: valid_params
       end
 
@@ -27,88 +25,50 @@ RSpec.describe "Api::V1::Pricing", type: :request do
       it "returns only the rate" do
         expect(json_response).to eq("rate" => 15000)
       end
+
+      it "does not call the rate API" do
+        expect(rate_api).not_to have_been_requested
+      end
     end
 
-    context "when rates are requested repeatedly" do
-      let(:start) { Time.utc(2026, 1, 1, 12, 0, 0) }
-      let!(:rate_api) do
-        stub_request(:post, rate_api_url).to_return(
-          status: 200,
-          body: { rates: [ valid_params.merge(rate: 15000) ] }.to_json
-        )
+    context "when the requested rate is missing" do
+      before do
+        Pricing::RateSnapshot.store(rates: { [ "Winter", "GitawayHotel", "BooleanTwin" ] => 1 }, fetched_at: Time.current)
+        get api_v1_pricing_url, params: valid_params
       end
 
-      before { travel_to(start) }
+      it "returns bad gateway" do
+        expect(response).to have_http_status(:bad_gateway)
+      end
 
-      it "calls the API once within five minutes" do
-        get api_v1_pricing_url, params: valid_params
+      it "returns the rate error code" do
+        expect(error["code"]).to eq("rate_not_available")
+      end
+    end
+
+    context "when rates have expired" do
+      let(:start) { Time.utc(2026, 1, 1, 12, 0, 0) }
+
+      before do
+        travel_to(start)
+        Pricing::RateSnapshot.store(rates: { valid_key => 15000 }, fetched_at: start)
+      end
+
+      it "serves the rate just before five minutes" do
         travel_to(start + 299.seconds)
         get api_v1_pricing_url, params: valid_params
-        expect(rate_api).to have_been_requested.once
+        expect(response).to have_http_status(:ok)
       end
 
-      it "calls the API again once five minutes have passed" do
-        get api_v1_pricing_url, params: valid_params
+      it "stops serving the rate at five minutes" do
         travel_to(start + 300.seconds)
         get api_v1_pricing_url, params: valid_params
-        expect(rate_api).to have_been_requested.twice
+        expect(response).to have_http_status(:service_unavailable)
       end
     end
 
-    context "when the rate API returns an error" do
-      before do
-        stub_request(:post, rate_api_url).to_return(status: 401, body: { error: "Unauthorized" }.to_json)
-        get api_v1_pricing_url, params: valid_params
-      end
-
-      it "returns bad gateway" do
-        expect(response).to have_http_status(:bad_gateway)
-      end
-
-      it "returns the upstream error code" do
-        expect(error["code"]).to eq("pricing_upstream_error")
-      end
-
-      it "does not expose the upstream message" do
-        expect(response.body).not_to include("Unauthorized")
-      end
-    end
-
-    context "when the rate API omits the requested rate" do
-      before do
-        stub_request(:post, rate_api_url).to_return(status: 200, body: { rates: [] }.to_json)
-        get api_v1_pricing_url, params: valid_params
-      end
-
-      it "returns bad gateway" do
-        expect(response).to have_http_status(:bad_gateway)
-      end
-
-      it "returns the upstream error code" do
-        expect(error["code"]).to eq("pricing_upstream_error")
-      end
-    end
-
-    context "when the rate API times out" do
-      before do
-        stub_request(:post, rate_api_url).to_raise(Net::ReadTimeout)
-        get api_v1_pricing_url, params: valid_params
-      end
-
-      it "returns gateway timeout" do
-        expect(response).to have_http_status(:gateway_timeout)
-      end
-
-      it "returns the timeout error code" do
-        expect(error["code"]).to eq("pricing_upstream_timeout")
-      end
-    end
-
-    context "when the rate API quota is used up" do
-      before do
-        stub_request(:post, rate_api_url).to_return(status: 429, body: { error: "Rate limit exceeded (1000/day)" }.to_json)
-        get api_v1_pricing_url, params: valid_params
-      end
+    context "when no rates are cached" do
+      before { get api_v1_pricing_url, params: valid_params }
 
       it "returns service unavailable" do
         expect(response).to have_http_status(:service_unavailable)
@@ -117,16 +77,17 @@ RSpec.describe "Api::V1::Pricing", type: :request do
       it "returns the unavailable error code" do
         expect(error["code"]).to eq("pricing_unavailable")
       end
+    end
 
-      it "does not expose the upstream message" do
-        expect(response.body).not_to include("1000/day")
-      end
+    it "never calls the rate API, however many requests miss the cache" do
+      1000.times { get api_v1_pricing_url, params: valid_params }
+      expect(rate_api).not_to have_been_requested
     end
 
     [ Redis::CannotConnectError, ConnectionPool::TimeoutError ].each do |redis_error|
       context "when the cache fails with #{redis_error}" do
         before do
-          allow(RateApiClient).to receive(:get_rates).and_raise(redis_error, "redis://secret-host")
+          allow(Rails.cache).to receive(:read).and_raise(redis_error, "redis://secret-host")
           get api_v1_pricing_url, params: valid_params
         end
 
@@ -141,12 +102,16 @@ RSpec.describe "Api::V1::Pricing", type: :request do
         it "does not expose the Redis details" do
           expect(response.body).not_to include("secret-host")
         end
+
+        it "does not call the rate API" do
+          expect(rate_api).not_to have_been_requested
+        end
       end
     end
 
     context "when an unexpected error occurs" do
       before do
-        allow(RateApiClient).to receive(:get_rates).and_raise(StandardError, "secret internal detail")
+        allow(Pricing::RateSnapshot).to receive(:current).and_raise(StandardError, "secret internal detail")
         get api_v1_pricing_url, params: valid_params
       end
 

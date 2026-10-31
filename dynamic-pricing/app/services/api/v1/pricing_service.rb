@@ -6,22 +6,14 @@ module Api::V1
       @room = room
     end
 
+    # Only ever reads the cache. The worker is the only caller of the rate API,
+    # so traffic can't affect how much of the quota is used.
     def run
-      snapshot = Pricing::RateSnapshot.current || fetch_snapshot
+      snapshot = Pricing::RateSnapshot.current
+      raise ApiError.new(:pricing_unavailable) if snapshot.nil?
+
       @result = snapshot.rate_for(period: @period, hotel: @hotel, room: @room)
-      raise ApiError.new(:pricing_upstream_error) if @result.nil?
-    end
-
-    private
-
-    def fetch_snapshot
-      Pricing::RateFetcher.new.call
-    rescue RateApiClient::TimeoutError
-      raise ApiError.new(:pricing_upstream_timeout)
-    rescue RateApiClient::QuotaExceededError
-      raise ApiError.new(:pricing_unavailable)
-    rescue RateApiClient::Error
-      raise ApiError.new(:pricing_upstream_error)
+      raise ApiError.new(:rate_not_available) if @result.nil?
     end
   end
 end

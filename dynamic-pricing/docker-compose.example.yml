@@ -20,3 +20,17 @@ services:
     depends_on:
       - rate-api
       - redis
+
+  rate-refresher:
+    build: .
+    command: bin/rate_refresher
+    restart: unless-stopped
+    volumes:
+      - .:/rails
+    environment:
+      - RATE_API_URL=http://rate-api:8080
+      - RATE_API_TOKEN=REPLACE_WITH_RATE_API_TOKEN
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - rate-api
+      - redis

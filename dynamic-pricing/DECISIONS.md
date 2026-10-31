@@ -64,9 +64,14 @@ Measured on 2026-10-30 against `tripladev/rate-api`, run through Docker Compose,
 
 ### Known risks accepted
 
-- **Failed refreshes reach users.** About 1 call in 6 fails, so about 1 in 6 refreshes returns an error to the request that triggered it. That is roughly 57 errors a day at 10,000 requests, and the next request tries again.
-- **Normal quota use rises slightly.** Failed calls spend quota, so healthy use is about 345 calls a day rather than 288.
-- **A long outage can exhaust the quota.** Every request during an outage makes an upstream call, so 1,000 requests would use up the day's quota. Rates then stay unavailable after the outage ends, until the quota resets.
+These estimates use the failure rate from one test run of 970 calls.
+
+- **Higher model cost.** The worker makes about 520 calls a day even with no traffic, against about 345 if requests fetched on demand.
+- **Short gaps in rates.** When the attempts at 180s and 270s both fail, about 12 times a day, requests return `503` for up to 60s, because rates older than 5 minutes are never served.
+- **Worker down means no rates.** Requests return `503` within 5 minutes of the worker stopping, and nothing alerts on this. A Compose healthcheck wouldn't help, because Compose doesn't act on it. Production should alert on `503` rates or on `rate_refresh_succeeded` logs stopping.
+- **The 960 limit assumes** that nothing else uses the token and that Redis keeps the gate. A Redis wipe could allow one extra call.
+
+Decisions 11 and 14 are superseded by decisions 20 and 22.
 
 ## Scaling limits
 
@@ -121,6 +126,16 @@ Compared against `~/.claude/CLAUDE.md` and `~/.claude/rules/rails-conventions.md
 - **Not applicable:** Pagy and Ransack (no list endpoints), uids (no exposed records), migrations and background jobs (none needed).
 
 ## Change log
+
+### 2026-10-31: Refresh rates in a worker
+
+- Added `Pricing::RateRefresher` and `bin/rate_refresher`, which checks every 5s and refreshes once rates reach 180s of age (decision 21).
+- Added the 90s gate, an atomic `Rails.cache` write that allows one call per period. This caps usage at 960 calls a day (decision 20). If Redis can't be reached, no call is made.
+- `PricingService` now only reads the cache, so requests can never call the API. A miss returns `503 pricing_unavailable`.
+- Renamed `pricing_upstream_error` to `rate_not_available`, as its only remaining use is a missing rate. Removed `pricing_upstream_timeout`, because requests no longer make calls that can time out.
+- Added a `rate-refresher` Compose service. In development it also logs to stdout, so `docker compose logs` shows it.
+- Added specs that simulate a full day of ticks to check the 960 limit, and that 1,000 requests with an empty cache make no calls.
+- Extended CI's endpoint check to 70 attempts over about 3.5 minutes. The first rates can now take up to 90s after a failed attempt.
 
 ### 2026-10-31: Cache rates in a snapshot
 

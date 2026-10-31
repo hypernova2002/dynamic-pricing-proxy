@@ -2,7 +2,7 @@
 
 A Rails API that sits in front of Tripla's dynamic pricing model and serves hotel room rates while staying within the model's limit of 1,000 calls per day.
 
-**Status: in progress.** The endpoint still calls the pricing model on every request. Caching and failure handling are designed but not built yet.
+**Status: in progress.** A worker (`bin/rate_refresher`) keeps rates in Redis, and the endpoint only reads them, so traffic can't use up the quota. Rates are unavailable for the first moments after starting, until the worker's first successful fetch.
 
 - [spec.md](spec.md): the original assignment brief
 - [DECISIONS.md](DECISIONS.md): design decisions, convention review and change log
