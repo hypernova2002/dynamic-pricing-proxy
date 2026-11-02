@@ -48,7 +48,7 @@ class RateApiClient
 
   def self.log_request(started_at, **fields)
     duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round
-    Rails.logger.info({ event: "rate_api_request", duration_ms: duration_ms, **fields }.to_json)
+    StructuredLog.info("rate_api_request", duration_ms: duration_ms, **fields)
   end
   private_class_method :log_request
 end

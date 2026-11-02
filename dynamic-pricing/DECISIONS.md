@@ -78,6 +78,7 @@ These estimates use the failure rate from one test run of 970 calls.
 |---|---|---|---|---|
 | 25 | 2026-11-02 | Accepted | Log one JSON line per request with lograge, including `request_id`, `error_code` and the raw `params` | Makes requests searchable and tied to the `X-Request-Id` a client receives. Fields can be extracted from `params` by a log parser downstream, so the app doesn't select them. Callers can put arbitrary text in `params`, so a parser shouldn't trust those values |
 | 26 | 2026-11-02 | Accepted | Don't log throttled requests | A client over the limit could flood the logs. A future option is logging an IP only after a number of throttles |
+| 27 | 2026-11-02 | Accepted | Log app events through `StructuredLog`, with a `request_id` on request errors and a `refresh_id` on each worker attempt | Every line has the same fields. A `500` can be traced from the client's `X-Request-Id`, and all of a refresh's lines can be found together, as the worker has no request ID |
 
 ## Response times
 
@@ -119,6 +120,12 @@ Those are minimums. Refreshing early, as the worker does to hide failures, costs
 | Git hooks | CI runs the tests and lint |
 
 ## Change log
+
+### 2026-11-02: Structure app logs and add a refresh ID
+
+- Added `StructuredLog`, used by every app log call, which adds the event name, timestamp and any current ID (decision 27).
+- Added `Current`, set by a `before_action` for `request_id` and around each worker attempt for `refresh_id`.
+- `cache_unavailable` and `unhandled_error` are now JSON events rather than plain strings.
 
 ### 2026-11-02: Log requests as JSON with lograge
 

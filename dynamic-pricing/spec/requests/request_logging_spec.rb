@@ -50,6 +50,45 @@ RSpec.describe "Request logging", type: :request do
     end
   end
 
+  context "with an unexpected error" do
+    let(:error_lines) { [] }
+
+    before do
+      allow(Rails.logger).to receive(:error) { |message| error_lines << JSON.parse(message) }
+      allow(Pricing::RateSnapshot).to receive(:current).and_raise(StandardError, "something broke")
+      get api_v1_pricing_url, params: params
+    end
+
+    it "logs the error with the request ID that the client receives" do
+      expect(error_lines).to contain_exactly(
+        a_hash_including(
+          "event" => "unhandled_error",
+          "error" => "StandardError",
+          "message" => "something broke",
+          "request_id" => response.headers["X-Request-Id"]
+        )
+      )
+    end
+
+    it "uses the same request ID as the request log" do
+      expect(error_lines.first["request_id"]).to eq(request_log["request_id"])
+    end
+  end
+
+  context "when the cache is unavailable" do
+    let(:error_lines) { [] }
+
+    before do
+      allow(Rails.logger).to receive(:error) { |message| error_lines << JSON.parse(message) }
+      allow(Rails.cache).to receive(:read).and_raise(Redis::CannotConnectError)
+      get api_v1_pricing_url, params: params
+    end
+
+    it "logs the error with the request ID" do
+      expect(error_lines.first).to include("event" => "cache_unavailable", "request_id" => response.headers["X-Request-Id"])
+    end
+  end
+
   context "with invalid parameters" do
     before { get api_v1_pricing_url, params: params.merge(hotel: "Nope") }
 

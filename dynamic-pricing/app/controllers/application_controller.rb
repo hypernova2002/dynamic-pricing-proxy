@@ -3,6 +3,8 @@ class ApplicationController < ActionController::API
   rescue_from ApiError, with: :render_api_error
   rescue_from Redis::BaseError, ConnectionPool::TimeoutError, with: :render_cache_unavailable
 
+  before_action { Current.request_id = request.request_id }
+
   private
 
   def parse_request(request_model_class, input)
@@ -16,12 +18,12 @@ class ApplicationController < ActionController::API
   end
 
   def render_cache_unavailable(exception)
-    Rails.logger.error("#{exception.class}: #{exception.message}")
+    StructuredLog.error("cache_unavailable", error: exception.class.name, message: exception.message)
     render_api_error(ApiError.new(:pricing_unavailable))
   end
 
   def render_internal_error(exception)
-    Rails.logger.error("#{exception.class}: #{exception.message}")
+    StructuredLog.error("unhandled_error", error: exception.class.name, message: exception.message)
     render_api_error(ApiError.new(:internal_error))
   end
 end

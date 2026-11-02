@@ -18,7 +18,7 @@ module Pricing
       raise RateApiClient::Error, "Response has no valid rates" if rates.empty?
 
       missing = ALL_KEYS - rates.keys
-      log_warning("rate_api_missing_rows", rows: missing.to_a) if missing.any?
+      StructuredLog.warn("rate_api_missing_rows", rows: missing.to_a) if missing.any?
       RateSnapshot.store(rates: rates, fetched_at: fetched_at)
     end
 
@@ -28,12 +28,12 @@ module Pricing
     def build_rates(rows)
       rows.each_with_object({}) do |row, rates|
         rate = parse_rate(row)
-        next log_warning("rate_api_invalid_row", row: row) if rate.nil?
+        next StructuredLog.warn("rate_api_invalid_row", row: row) if rate.nil?
 
         key = row.values_at("period", "hotel", "room")
-        next log_warning("rate_api_unexpected_row", row: row) unless ALL_KEYS.include?(key)
+        next StructuredLog.warn("rate_api_unexpected_row", row: row) unless ALL_KEYS.include?(key)
 
-        log_warning("rate_api_duplicate_row", row: row) if rates.key?(key)
+        StructuredLog.warn("rate_api_duplicate_row", row: row) if rates.key?(key)
         rates[key] = rate
       end
     end
@@ -44,10 +44,6 @@ module Pricing
 
       rate = Integer(row["rate"].to_s, 10, exception: false)
       rate if rate&.positive?
-    end
-
-    def log_warning(event, **fields)
-      Rails.logger.warn({ event: event, **fields }.to_json)
     end
   end
 end

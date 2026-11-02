@@ -113,6 +113,40 @@ RSpec.describe Pricing::RateRefresher do
       end
     end
 
+    context "with the logs of each attempt" do
+      let(:lines) { [] }
+      let(:parsed) { lines.map { |line| JSON.parse(line) } }
+      let(:url) { "#{RateApiClient.base_uri}/pricing" }
+
+      before do
+        %i[info warn].each { |level| allow(Rails.logger).to receive(level) { |message| lines << message } }
+        stub_request(:post, url).to_return(status: 500, body: "{}")
+      end
+
+      it "gives all of an attempt's lines the same refresh ID" do
+        refresher.tick
+        expect(parsed.map { |line| line["event"] }).to eq(%w[rate_api_request rate_refresh_failed])
+        expect(parsed.map { |line| line["refresh_id"] }.uniq.compact.size).to eq(1)
+      end
+
+      it "gives each attempt its own refresh ID" do
+        refresher.tick
+        travel_to(start + 90.seconds)
+        refresher.tick
+        expect(parsed.map { |line| line["refresh_id"] }.uniq.size).to eq(2)
+      end
+
+      it "clears the refresh ID after the attempt" do
+        refresher.tick
+        expect(Current.refresh_id).to be_nil
+      end
+
+      it "never logs the API token" do
+        refresher.tick
+        expect(lines.join).not_to include(ENV.fetch("RATE_API_TOKEN"))
+      end
+    end
+
     it "lets only one of several concurrent workers call the API" do
       calls = Concurrent::AtomicFixnum.new
       allow(RateApiClient).to receive(:get_rates) do
