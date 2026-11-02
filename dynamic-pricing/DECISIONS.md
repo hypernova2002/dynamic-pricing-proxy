@@ -72,6 +72,13 @@ These estimates use the failure rate from one test run of 970 calls.
 - **Worker down means no rates.** Requests return `503` within 5 minutes of the worker stopping, and nothing alerts on this. A Compose healthcheck wouldn't help, because Compose doesn't act on it. Production should alert on `503` rates or on `rate_refresh_succeeded` logs stopping.
 - **The 960 limit assumes** that nothing else uses the token and that Redis keeps the gate. A Redis wipe could allow one extra call.
 
+## Logging
+
+| # | Date | Status | Decision | Why |
+|---|---|---|---|---|
+| 25 | 2026-11-02 | Accepted | Log one JSON line per request with lograge, including `request_id`, `error_code` and the raw `params` | Makes requests searchable and tied to the `X-Request-Id` a client receives. Fields can be extracted from `params` by a log parser downstream, so the app doesn't select them. Callers can put arbitrary text in `params`, so a parser shouldn't trust those values |
+| 26 | 2026-11-02 | Accepted | Don't log throttled requests | A client over the limit could flood the logs. A future option is logging an IP only after a number of throttles |
+
 ## Response times
 
 Moving fetching to the worker keeps the pricing model out of the request path, so its speed and failures don't reach users as delays.
@@ -112,6 +119,12 @@ Those are minimums. Refreshing early, as the worker does to hide failures, costs
 | Git hooks | CI runs the tests and lint |
 
 ## Change log
+
+### 2026-11-02: Log requests as JSON with lograge
+
+- Added `lograge`, replacing Rails' multi-line request logs with one JSON line per request (decision 25). All of it is configured in the initializer, with no logging code in controllers. It reads the error code from the response body on failed requests.
+- Exposed `X-Request-Id` through CORS, so browser clients can quote it when reporting a problem.
+- Removed production's `log_tags` and its `Logger::Formatter`. Both prefixed each line with text that made it invalid JSON. The request ID is now a field in the JSON.
 
 ### 2026-10-31: Finish the documentation
 

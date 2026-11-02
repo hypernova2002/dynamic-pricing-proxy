@@ -13,6 +13,10 @@ RSpec.describe "CORS", type: :request do
     it "lets browsers read Retry-After" do
       expect(response.headers["access-control-expose-headers"]).to include("Retry-After")
     end
+
+    it "lets browsers read the request ID" do
+      expect(response.headers["access-control-expose-headers"]).to include("X-Request-Id")
+    end
   end
 
   context "with a preflight request" do
