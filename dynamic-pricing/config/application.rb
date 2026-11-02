@@ -42,6 +42,8 @@ module Interview
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
 
+    config.x.requests_per_minute = 10_000
+
     # The store reports Redis errors as cache misses by default. Raise them instead,
     # so a Redis outage can't be mistaken for missing rates.
     CACHE_ERROR_HANDLER = ->(method:, returning:, exception:) { raise exception }

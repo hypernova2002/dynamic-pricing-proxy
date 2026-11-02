@@ -8,7 +8,7 @@ unless Rails.env.test?
   )
 end
 
-Rack::Attack.throttle("requests/ip", limit: 300, period: 1.minute) { |request| request.ip }
+Rack::Attack.throttle("requests/ip", limit: ->(_request) { Rails.configuration.x.requests_per_minute }, period: 1.minute) { |request| request.ip }
 
 Rack::Attack.throttled_responder = lambda do |request|
   error = ApiError.new(:rate_limited)

@@ -42,7 +42,7 @@ Measured on 2026-10-30 against `tripladev/rate-api`, run through Docker Compose,
 | 2 | 2026-10-30 | Accepted | Move the assignment brief to `spec.md` and keep it unchanged | Frees `README.md` for this project and preserves the original requirements |
 | 3 | 2026-10-30 | Accepted | Remove the token default from `RateApiClient`, so a missing `RATE_API_TOKEN` fails at load | A default in source defeats decision 1 |
 | 4 | 2026-10-30 | Accepted | CI builds `docker-compose.yml` from the example using a `RATE_API_TOKEN` Actions secret | CI needs the file now that it's untracked, and its endpoint check needs a valid token |
-| 5 | 2026-10-30 | Accepted | Fetch all 36 combinations in one batched call and cache them as one snapshot for 5 minutes | Caps healthy traffic at 288 windows a day. Caching each combination separately could reach 10,000 calls against a limit of 1,000 |
+| 5 | 2026-10-30 | Accepted | Fetch all 36 combinations in one batched call and cache them as one snapshot for 5 minutes | One call covers every rate, where caching each combination separately could reach 10,000 calls against a limit of 1,000. With the worker (decision 20), this comes to about 520 calls a day |
 | 6 | 2026-10-30 | Accepted | Use Redis through `Rails.cache` | The quota is per token, so state must be shared across processes |
 | 7 | 2026-10-30 | Accepted | Never serve a rate older than 5 minutes, and start the clock before the upstream call is sent | Rate validity is a hard requirement, so an outage returns an error rather than an old price |
 | 8 | 2026-10-30 | Accepted | Return errors as `{ "error": { "code", "message", "details" } }`, from a central registry | Gives clients stable codes and field-level detail, and every failure the same shape. Replaces the scaffold's `{ "error": "message" }` and its tests |
@@ -120,6 +120,12 @@ Those are minimums. Refreshing early, as the worker does to hide failures, costs
 | Git hooks | CI runs the tests and lint |
 
 ## Change log
+
+### 2026-11-02: Raise the rate limit
+
+- Raised the per-IP limit from 300 to 10,000 requests a minute, set by `config.x.requests_per_minute`. Many users can share one IP behind a gateway, and traffic can't affect the upstream quota, so the limit only needs to stop runaway clients.
+- Specs now set a low limit rather than sending thousands of requests.
+- Corrected decision 5, which still gave the 288 calls a day from before the worker.
 
 ### 2026-11-02: Document the worker trade-offs and logging
 

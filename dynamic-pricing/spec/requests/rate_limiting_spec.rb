@@ -7,6 +7,7 @@ RSpec.describe "Rate limiting", type: :request do
 
   before do
     Rack::Attack.enabled = true
+    Rails.configuration.x.requests_per_minute = 3
     travel_to(start)
     Pricing::RateSnapshot.store(rates: { [ "Summer", "GitawayHotel", "BooleanTwin" ] => 12000 }, fetched_at: start)
   end
@@ -15,13 +16,19 @@ RSpec.describe "Rate limiting", type: :request do
     count.times { get api_v1_pricing_url, params: params, headers: headers }
   end
 
-  it "allows 300 requests a minute from one IP" do
-    request_times(300)
+  it "allows 10,000 requests a minute by default" do
+    Rails.configuration.x.requests_per_minute = 10_000
+    request_times(4)
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "allows requests up to the limit from one IP" do
+    request_times(3)
     expect(response).to have_http_status(:ok)
   end
 
   context "when an IP goes over the limit" do
-    before { request_times(301) }
+    before { request_times(4) }
 
     it "returns too many requests" do
       expect(response).to have_http_status(:too_many_requests)

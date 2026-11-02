@@ -91,7 +91,7 @@ Errors share one format:
 | Status | Code | Meaning |
 |---|---|---|
 | `422` | `validation_failed` | A parameter is missing, invalid or not recognized |
-| `429` | `rate_limited` | Over 300 requests a minute from one IP. See `Retry-After` |
+| `429` | `rate_limited` | Over 10,000 requests a minute from one IP. See `Retry-After` |
 | `500` | `internal_error` | An unexpected error |
 | `502` | `rate_not_available` | No current rate for this room, while others are available |
 | `503` | `pricing_unavailable` | No current rates, or Redis is down |

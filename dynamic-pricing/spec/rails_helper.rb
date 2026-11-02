@@ -70,6 +70,7 @@ RSpec.configure do |config|
   config.include ActiveSupport::Testing::TimeHelpers
   config.before { Rails.cache.clear }
   config.before { Rack::Attack.enabled = false }
+  config.after { Rails.configuration.x.requests_per_minute = 10_000 }
   config.after { travel_back }
   # arbitrary gems may also be filtered via:
   # config.filter_gems_from_backtrace("gem name")

@@ -44,8 +44,9 @@ RSpec.describe "Pricing API", type: :openapi do
 
         before do
           Rack::Attack.enabled = true
+          Rails.configuration.x.requests_per_minute = 3
           travel_to(Time.utc(2026, 1, 1, 12, 0, 0))
-          300.times { get "/api/v1/pricing", params: { period: period, hotel: hotel, room: room } }
+          3.times { get "/api/v1/pricing", params: { period: period, hotel: hotel, room: room } }
         end
 
         run_test! do

@@ -36,8 +36,9 @@ RSpec.describe "CORS", type: :request do
   context "when a request is throttled" do
     before do
       Rack::Attack.enabled = true
+      Rails.configuration.x.requests_per_minute = 3
       travel_to(Time.utc(2026, 1, 1, 12, 0, 0))
-      301.times { get api_v1_pricing_url, headers: origin.merge("REMOTE_ADDR" => "203.0.113.9") }
+      4.times { get api_v1_pricing_url, headers: origin.merge("REMOTE_ADDR" => "203.0.113.9") }
     end
 
     it "is still readable by the browser" do
