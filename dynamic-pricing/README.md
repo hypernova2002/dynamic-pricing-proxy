@@ -10,7 +10,7 @@ A background worker fetches all the rates and keeps them in Redis. Requests only
 
 ## Setup
 
-Everything runs in Docker. You don't need Ruby installed on your machine.
+Everything runs in Docker, so you don't need Ruby installed on your machine. You need Docker with Compose V2, which provides the `docker compose` command rather than the older `docker-compose`. This was tested with Docker Engine 29.7.2 and Compose 5.5.0. Earlier versions should work, as nothing here relies on recent features, but they haven't been tested.
 
 1. Create your local compose file. It is gitignored, so your token stays out of the repository:
 
@@ -96,6 +96,31 @@ Errors share one format:
 | `502` | `rate_not_available` | No current rate for this room, while others are available |
 | `503` | `pricing_unavailable` | No current rates, or Redis is down |
 
+## Logging
+
+Everything is logged as one JSON object per line, on stdout in production. In development, `docker compose logs` shows it.
+
+| Event | Level | Meaning |
+|---|---|---|
+| `http_request` | info | One line per request, with status, duration, `params`, and `error_code` on failure |
+| `rate_refresh_succeeded` | info | The worker stored new rates |
+| `rate_refresh_failed` | info | A refresh attempt failed, and the worker will try again |
+| `rate_api_request` | info | One call to the pricing model, with status and duration |
+| `rate_api_missing_rows`, `rate_api_invalid_row`, `rate_api_unexpected_row`, `rate_api_duplicate_row` | warn | A response had a problem with its rows |
+| `cache_unavailable`, `unhandled_error`, `rate_refresh_error` | error | Redis or an unexpected failure |
+
+Two IDs link related lines:
+
+- **`request_id`:** matches the `X-Request-Id` header returned to the client, so a reported failure can be traced to its log lines.
+- **`refresh_id`:** one per worker attempt, linking its API call, row warnings and result.
+
+```bash
+docker compose logs interview-dev | grep <request_id>
+docker compose logs rate-refresher | grep <refresh_id>
+```
+
+Throttled requests aren't logged, because a client over the limit could flood the logs. Logging an IP after a number of throttles would be a future option. There are no metrics or tracing, but production alerts can be built on these events.
+
 ## Design
 
 ### The core problem
@@ -149,14 +174,28 @@ Moving fetching out of the request path is also a real improvement for users. A 
 | Validate parameters with a request model | The valid values live in one place, and every bad field is reported at once |
 | Generate API docs from the specs | The docs are tested against real responses, and CI catches drift |
 
-### Trade-offs
+### Trade-offs of using a worker
 
-These estimates use the failure rate from one test run of 970 calls against the simulated API.
+The alternative is fetching during the request whenever the cache is empty. Compared with that, a worker gives:
 
-- **Higher model cost:** about 520 calls a day even with no traffic, against about 345 if requests fetched on demand.
-- **Short gaps:** when the attempts at 180s and 270s both fail, about 12 times a day, requests return `503` for up to 60s.
+- **Fast responses:** users never wait on the pricing model, so a request takes about 11ms whether it hits or misses the cache.
+- **Easier scaling with users:** requests only read Redis, so more traffic adds no calls to the model.
+- **Easier control of the quota:** one process decides when to call, instead of the call rate depending on traffic.
+- **Hidden failures:** a failed refresh is tried again while the current rates are still valid, so users rarely see it.
+- **Fresher rates:** rates are normally replaced at about 3 minutes, not at the 5-minute limit.
+- **Simpler requests:** a request has one job, which makes it easier to reason about and test.
+
+The costs are:
+
+- **Poor scaling with the catalogue:** combinations multiply, so one more hotel adds 12 today. Each refresh fetches all of them, whether or not anyone asks. The quota allows about two batches per window if the catalogue outgrows one request, and every request reads the whole snapshot, which slows as it grows.
+- **Wasted data:** if one hotel gets most of the traffic, most fetched rates are never served. This is small at 36 combinations, and gets worse as the catalogue grows.
+- **Cost with no traffic:** about 520 calls a day even overnight, against about 345 a day under constant traffic if requests fetched on demand, and none when idle.
+- **Errors instead of waiting:** during a gap or at startup, users get an immediate `503`, where fetching on demand might have succeeded after a short wait. Gaps happen when the attempts at 180s and 270s both fail, about 12 times a day, and last up to 60s.
 - **Another process to run:** if the worker stops, requests return `503` within 5 minutes and nothing alerts. Production should alert on `503` rates, or on `rate_refresh_succeeded` logs stopping.
-- **Limits of the guarantee:** the 960 cap assumes nothing else uses the token and Redis keeps the gate. A Redis wipe could allow one extra call.
+
+The first two costs could be reduced together by refreshing only recently requested combinations. That isn't needed at this size, but it's the likely next step if the catalogue grows.
+
+The 960 cap assumes nothing else uses the token and Redis keeps the gate. A Redis wipe could allow one extra call. The failure-based estimates come from one test run of 970 calls against the simulated API.
 
 ### Assumptions
 

@@ -27,10 +27,10 @@ Measured on 2026-10-30 against `tripladev/rate-api`, run through Docker Compose,
 | Repeated calls | A different rate each time | Caching is directly observable in tests and by hand |
 | Random HTTP 500 | 87 of 970 calls (9%) | Failures are routine, so each one needs a clear error response |
 | Random hang | 73 of 970 calls (7.5%). One test call was still hanging at 120s | Strict timeouts are essential. The scaffold has none |
-| Consecutive failures | At most 3 in the run | Failures are short-lived, so the next request usually succeeds |
-| Quota exceeded | `429 {"error": "Rate limit exceeded (1000/day)"}` | Treat as unavailable and return 503 |
+| Consecutive failures | At most 3 in the run | Failures are short-lived, so the worker's next attempt usually succeeds |
+| Quota exceeded | `429 {"error": "Rate limit exceeded (1000/day)"}` | The worker logs a failed attempt and tries again. Requests return `503` once rates expire |
 | Quota accounting | The 429 arrived after 970 batch calls plus 30 bad-value calls, with 30 bad-token calls also sent. So 500s and hangs count against the quota, and bad tokens appear not to | Failed calls spend quota. See the known risks below |
-| Bad token | `401 {"error": "Unauthorized"}` | Log as a configuration error and return 502. Never pass it to the client |
+| Bad token | `401 {"error": "Unauthorized"}` | The worker logs a failed attempt with the status. Clients never see it, and get `503` once rates expire |
 | Malformed JSON | `400` with an HTML body | Don't assume error bodies are JSON |
 | Quota reset time | Not measured | None for now, since the service keeps no call count |
 
@@ -120,6 +120,12 @@ Those are minimums. Refreshing early, as the worker does to hide failures, costs
 | Git hooks | CI runs the tests and lint |
 
 ## Change log
+
+### 2026-11-02: Document the worker trade-offs and logging
+
+- Expanded the README's trade-offs of using a worker over fetching during the request.
+- Added a logging section to the README, and the Docker requirements to its setup section.
+- Corrected rows in the pricing model behaviour table that still described requests calling the API.
 
 ### 2026-11-02: Structure app logs and add a refresh ID
 
